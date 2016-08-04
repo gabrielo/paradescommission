@@ -1,0 +1,346 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Belfast 2016-07-12</title>
+    <meta charset="utf-8">
+    <style>
+      html, body {
+        height: 100%;
+        padding: 0;
+        margin: 0;
+        background: rgb(14, 21, 30);
+        height: 100%;
+        font-family: Tahoma, Geneva, Verdana, sans-serif;
+        font-size:12px;
+        color:#808080;
+      }
+      #map {
+        position: absolute;
+        height: 100%;
+        width: 100%;
+        background-color: #333;
+      }
+
+      iframe {
+        width:500px;
+        height:500px;
+      }
+      .leaflet-popup-content {
+        width:auto !important;
+        min-width: 185px;
+      }
+      #loading {
+        background: url(default.gif) no-repeat center;
+        pointer-events: none;
+        position: absolute;
+        height: 200px;
+        width: 200px;
+        z-index: 100;
+        top: 50%;
+        left: 50%;
+        margin-left: -100px;
+        margin-top: -100px;
+        border: 5px solid #333;
+        border-radius: 200px;
+      }
+
+
+      .info {
+          padding: 6px 8px;
+          font: 14px/16px Arial, Helvetica, sans-serif;
+          background: white;
+          background: rgba(255,255,255,0.8);
+          box-shadow: 0 0 15px rgba(0,0,0,0.2);
+          border-radius: 5px;
+      }
+      .info h4 {
+          margin: 0 0 5px;
+          color: #777;
+      }      
+
+      .legend {
+          line-height: 18px;
+          color: #555;
+      }
+      .legend i {
+          width: 18px;
+          height: 18px;
+          float: left;
+          margin-right: 8px;
+          opacity: 0.95;
+      }      
+    </style>
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.2/leaflet.css" />
+
+    <script src="http://cdn.leafletjs.com/leaflet-0.7.2/leaflet.js"></script>
+    <script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.3.0"></script>
+    <script>
+
+      var leafletMap;
+      var paradesdata;
+ 
+
+      var tileLayers = {
+        "toner": new L.StamenTileLayer("toner", { detectRetina: true, zIndex: 0 }),
+        "watercolor": new L.StamenTileLayer("watercolor", { detectRetina: true, zIndex: 0 }),
+        "dark": new L.tileLayer("http://{s}.sm.mapstack.stamen.com/(toner-background,$fff[difference],$fff[@23],$fff[hsl-saturation@20],toner-lines[destination-in])/{z}/{x}/{y}.png", { detectRetina: true, zIndex: 0 }),
+        "osm": new L.tileLayer("http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { detectRetina: true, zIndex: 0 })
+
+      }
+      var currentTileLayer = "toner";
+
+      var paradesLayer;
+
+      var ready = {
+        'paradesLayerLoaded': false,
+      }
+
+      var initJsonData;
+
+      var start;
+      var animate = false;
+      var currentIdx = -1;
+
+
+      function setParadeRoute(idx) {
+        var offStyle = {
+            color: "#D94F24",
+            weight: 0,
+            opacity: 0.0,
+            fillOpacity: 0.0,
+            fillColor: "#ff0000"
+        };
+        var defaultStyle = {
+          color: "#D94F24",
+          weight: 4,
+          opacity: 1.0,
+          fillOpacity: 1.0,
+          fillColor: "#ff0000"
+        };
+
+        paradesLayer.eachLayer(function(layer) {
+          var feature = layer.feature;
+          if (feature.properties.idx > currentIdx) {
+            layer.setStyle(offStyle);
+          } else {
+            if (feature.properties.idx == currentIdx) {
+              defaultStyle.opacity = opacity;
+              layer.setStyle(defaultStyle);
+
+            } else {
+              layer.setStyle(defaultStyle);
+            }
+          }
+        });          
+      }
+
+      var setAnimate = function(newValue) {
+        animate = newValue;
+        if (newValue) {
+          console.log('start animation');
+          window.requestAnimationFrame(step);
+        } else {
+          console.log('stop animation');
+        }      
+      }
+
+
+/*      function step(timestamp) {
+        if (!start) start = timestamp;
+        var progress = timestamp - start;
+        if (animate) {
+          if (progress < 5000) {
+            currentIdx++;
+            if (currentIdx == paradesdata.features.length) {
+              currentIdx = 0;
+            }
+            setParadeRoute(currentIdx);
+            window.requestAnimationFrame(step);
+
+          } else {
+            console.log('restarting');
+            start = null;
+            currentIdx = 0;
+            window.requestAnimationFrame(step);
+          }
+        }
+      }
+*/
+
+      var opacity = 1.0;
+      function step(timestamp) {
+        if (!start) start = timestamp;
+        var progress = timestamp - start;
+        if (animate) {
+          if (currentIdx < paradesdata.features.length) {
+            opacity = Math.min(progress/300, 1.0);
+            if (progress > 300) {
+              currentIdx++;
+              opacity = 0;
+              console.log(currentIdx);
+              setParadeRoute(currentIdx);
+              start = null;
+            } else {
+              setParadeRoute(currentIdx);
+
+            }
+            window.requestAnimationFrame(step);
+         } else {
+            if (progress > 3000) {
+
+            console.log('restarting');
+            start = null;
+            currentIdx = -1;
+          }
+            window.requestAnimationFrame(step);
+          }
+        }
+      }
+      function isReady(callback) {
+        var keys = Object.keys(ready);
+        var r = true;
+        for (var i = 0; i < keys.length; i++) {
+          if (!ready[keys[i]]) {
+            r = false;
+          }
+        }
+        if (r) {
+          var el = document.getElementById('loading');
+          el.style['display'] = 'none';
+        }
+        return r;
+      }
+
+
+      function getInit(hash, url, callback) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url + '/' + hash + '.json');
+        xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+        xhr.onload = function() {
+          if (callback) {
+            callback(xhr.responseText);
+          }
+        }
+        xhr.send();
+      }
+
+
+      var setParadesLayer = function(newValue) {
+        if (newValue) {
+          leafletMap.addLayer(paradesLayer);
+        } else {
+          leafletMap.removeLayer(paradesLayer);
+        }
+        showParades = newValue;        
+      }
+
+
+      function initMap() {
+        var leafletMap  = L.map('map').setView([54.5975, -5.9226], 12); // Init the default view
+        leafletMap.addLayer(tileLayers[currentTileLayer]);
+        ready['mapLoaded'] = true;
+        if (isReady()) {
+          console.log('Ready');
+          initData(initJsonData);
+        }
+
+        return leafletMap;
+      }
+
+      function get(url, callback) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url);
+        xhr.onload = function() {
+          if (callback) {
+            var data = JSON.parse(xhr.responseText);
+            callback(data);
+          }
+        }
+        xhr.send();
+      }
+
+      function parseJson(txt) {
+        var data = JSON.parse(txt);
+        console.log(data);
+        ready['initFileLoaded'] = true;
+        initJsonData = data;
+        if (isReady()) {
+          console.log('Ready');
+          initData(initJsonData);
+        }
+      }    
+
+
+        function loadGeoJSON(data) {
+          paradesdata = data;
+            // Set a default style for out the polygons will appear
+            var defaultStyle = {
+                color: "#D94F24",
+                weight: 4,
+                opacity: 1.0,
+                fillOpacity: 1.0,
+                fillColor: "#ff0000"
+            };
+            var highlightStyle = {
+                color: '#D94F24', 
+                weight: 4,
+                opacity: 1.0,
+                fillOpacity: 1.0,
+                fillColor: '#999999'
+            };       
+
+
+            var onEachFeature = function (feature, layer) {
+              layer.setStyle(defaultStyle);
+              layer.on("mouseover", function (e) {
+                // Change the style to the highlighted version
+                layer.setStyle(highlightStyle);
+              });
+             layer.on("mouseout", function (e) {
+                // Start by reverting the style back
+                layer.setStyle(defaultStyle); 
+              });              
+             
+              layer.on("click", function (e) {
+                // Change the style to the highlighted version
+                console.log(feature);
+              });
+              
+              contentStr = "<div class=\"stats\">";
+              contentStr += "<h3>" + feature.properties.parade.header["Organisation"] + "</h3>";
+
+              contentStr += "</div>";
+              layer.bindPopup(contentStr);
+
+            }
+            paradesLayer = L.geoJson(data, {
+              // And link up the function to run when loading each feature
+                onEachFeature: onEachFeature,
+                zIndex: 10
+            });
+           leafletMap.addLayer(paradesLayer);
+
+            ready['paradesLayerLoaded'] = true;
+            if (isReady()) {
+              console.log('Ready');
+              setAnimate(true);
+            }
+
+        }
+
+        function init() {
+
+          leafletMap = initMap();
+
+          get('belfast-2016-07-12-idx.geojson', loadGeoJSON);
+
+        }
+        document.addEventListener('DOMContentLoaded', init, false);
+
+    </script>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="loading"></div>
+  </body>
+</html>
